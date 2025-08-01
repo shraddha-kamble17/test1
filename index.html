@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>📄 Chat with PDF (Gemini)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    #chat {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 400px;
+      overflow-y: scroll;
+      background: #fff;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+    .user { color: blue; font-weight: bold; margin-top: 10px; }
+    .bot { color: green; margin-top: 5px; }
+    input[type="text"] {
+      width: 75%;
+      padding: 10px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px;
+      font-size: 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    #status {
+      font-style: italic;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>📄 Chat with Your PDF</h2>
+
+  <input type="file" id="pdfInput" accept="application/pdf" />
+  <p id="status">No PDF uploaded.</p>
+
+  <div id="chat"></div>
+
+  <input type="text" id="userInput" placeholder="Ask something about the PDF..." />
+  <button onclick="sendToGemini()">Send</button>
+
+  <!-- PDF.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+
+  <script>
+    const apiKey = "AIzaSyCmyXF07YXZpeMOrSSR2JZi9khAhZgx90U"; // Replace if needed
+    const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    let pdfText = "";
+
+    const status = document.getElementById("status");
+    const chat = document.getElementById("chat");
+
+    document.getElementById("pdfInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      status.textContent = "⏳ Reading PDF...";
+      const reader = new FileReader();
+
+      reader.onload = async () => {
+        const typedArray = new Uint8Array(reader.result);
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        let fullText = "";
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const text = content.items.map(item => item.str).join(" ");
+          fullText += text + "\n";
+        }
+
+        pdfText = fullText;
+        status.textContent = `✅ PDF loaded with ${pdf.numPages} pages. You can now ask questions.`;
+      };
+
+      reader.readAsArrayBuffer(file);
+    });
+
+    async function sendToGemini() {
+      const input = document.getElementById("userInput").value.trim();
+      if (!input || !pdfText) return;
+
+      chat.innerHTML += `<p class="user">You: ${input}</p>`;
+      document.getElementById("userInput").value = "";
+
+      const prompt = `You are given a PDF. Here is the content:\n\n${pdfText.slice(0, 12000)}\n\nNow answer this question: ${input}`;
+
+      const res = await fetch(`${endpoint}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      const data = await res.json();
+
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "⚠️ Gemini did not respond.";
+      chat.innerHTML += `<p class="bot">Answer: ${reply}</p>`;
+      chat.scrollTop = chat.scrollHeight;
+    }
+  </script>
+
+</body>
+</html>
